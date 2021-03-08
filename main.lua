@@ -422,6 +422,13 @@ function drawAxis(transform)
     line(transform:position(), transform:forward())
 end
 
+function drawBox(t, size, style)
+    size = size or 0.2
+    style = style or "fill"
+    local x, y, z, a, ax, ay, az = t:toWorld():pose()
+    lovr.graphics.box(style, x, y, z, size, size, size, a, ax, ay, az)
+end
+
 local time = 0
 function lovr.draw()
     local deltaTime = 1/60
@@ -447,14 +454,27 @@ function lovr.draw()
     d.space = b
     d:lookAt(a)
 
-local manualCamera = true
+    local camera2 = Transform()
+
+    local camera = Transform(vec3(0, 10, 0))
+    camera.space = a
+    camera:rotation(quat(-math.pi/2, 1, 0, 0))
+    local manualCamera = true
     if manualCamera then 
+        -- camera:lookAt(d)
         -- remove the lovr camera positioning
-        local viewPose = lovr.graphics.getViewPose(1, mat4(), false)
-        lovr.graphics.transform(viewPose)
-        -- move camera to follow a transform
-        lovr.graphics.transform(d:toWorld():mat4():invert())
+
+        lovr.graphics.setViewPose(2, camera:toWorld():mat4(), false)
+        -- local viewPose = lovr.graphics.getViewPose(1, mat4(), false)
+        -- lovr.graphics.transform(viewPose)
+        -- -- move camera to follow a transform
+        -- lovr.graphics.transform(camera:toWorld():mat4():invert())
     end
+    local m = mat4()
+    lovr.graphics.getViewPose(1, m, false)
+    camera2:position(m)
+    camera2:rotation(m)
+
 
     -- c:rotate(b:rotation():conjugate())
     -- c:set(Transform(c:position(), quat(), b))
@@ -462,7 +482,10 @@ local manualCamera = true
     drawAxis(b:toWorld())
     drawAxis(c:toWorld())
     drawAxis(d:toWorld())
+    drawAxis(camera:toWorld())
+    drawAxis(camera2:toWorld())
 
+    drawBox(d)
     
     -- Draw connections
     lovr.graphics.setColor(1,1,0,1)
