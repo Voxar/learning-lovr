@@ -281,6 +281,15 @@ function m:drawCollider(collider)
 end
 
 
+local function drawAnchor(origin)
+  lovr.graphics.sphere(origin, .02)
+end
+
+
+local function drawAxis(origin, axis)
+  lovr.graphics.line(origin, origin + axis)
+end
+
 function drawAttachedJoints(collider)
   lovr.graphics.setColor(1,1,1,0.3)
   -- joints are attached to two colliders; function draws joint for second collider
@@ -311,14 +320,5 @@ function drawAttachedJoints(collider)
   end
 end
 
-
-function drawAnchor(origin)
-  lovr.graphics.sphere(origin, .02)
-end
-
-
-function drawAxis(origin, axis)
-  lovr.graphics.line(origin, origin + axis:normalize() * 0.3)
-end
 
 return m

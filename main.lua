@@ -1,9 +1,11 @@
+local physics = require "physics"
 package.path = "lib/share/lua/5.4/?.lua;" ..
     "lib/share/lua/5.4/?/init.lua;" ..
     "imgui2/lua/?.lua;" ..
     package.path
 Class = require 'pl.class'
 pp = require'pl.pretty'.dump
+tablex = require'pl.tablex'
 Transform = require 'transform'
 
 local lovr = lovr
@@ -46,7 +48,10 @@ end
 
 local Cube = {
     id = NewEntityIdentifier(),
-    transform = Transform(vec3(0, 0, -3), quat(math.pi/2, 1, 0, 0)),
+    transform = {
+        position = {0, 0, -3},
+        rotation = {math.pi/2, 1, 0, 0}
+    },
     render = {
         color = newVec4(1, 0, 0, 1),
         draw = function(self)
@@ -58,8 +63,17 @@ local Cube = {
     --     movementSpeed = newVec3(0.1, 0, 1),
     --     rotationSpeed = newQuat(1, 0, 1, 0),
     -- },
+    keyboard = {
+        x = {
+            down = { physics = { torque = {0, 0, 20} } },
+            up = { physics = { torque = {0,0,0} } }
+        },
+        z = {
+            down = { physics = { torque = {0, 0, -20} } },
+            up = { physics = { torque = {0,0,0} } }
+        },
+    },
     physics = {
-        torque = { 0, 0, 20},
         friction = 10000000,
         shapes = {
             {
@@ -89,7 +103,9 @@ local Cube = {
 
 local Floor = {
     id = NewEntityIdentifier(),
-    transform = Transform(vec3(0, -1, 0)),
+    transform = {
+        position = {0, -1, 0}
+    },
     physics = {
         friction = 10000000,
         shapes = {
@@ -105,7 +121,9 @@ local Floor = {
 
 local Sphere = {
     id = NewEntityIdentifier(),
-    transform = Transform(vec3(0.6, 0, 0.9)),
+    transform = {
+        position = { 0.6, 0, 0.9 }
+    },
     render = {
         color = newVec4(0, 2, 0, 1),
         draw = function(self)
@@ -119,9 +137,12 @@ local Sphere = {
         radius = 0.2
     }
 }
+
 local Sphere2 = {
     id = NewEntityIdentifier(),
-    transform = Transform(vec3(0, 2, 0)),
+    transform = {
+        position = {0, 2, 0}
+    },
     render = {
         color = newVec4(0, 0, 1, 1),
         draw = function(self)
@@ -136,11 +157,96 @@ local Sphere2 = {
     }
 }
 
+
+local car_body = {
+    id = 'car_body',
+    transform = {
+        position = {0, 3, 0},   
+    },
+    physics = {
+        id = "car_body",
+        type = "box",
+        size = {3.5, 0.5, 1.5},
+        static = false,
+        ignoresGravity = false,
+        tags = {"car"}
+    }
+}
+
+local steering = {
+    id = 'steering',
+    transform = {
+        position = { -1.2, 2.6, 0}
+    },
+    physics = {
+        type = "box",
+        size = {0.2, 0.2, 2},
+        joints = {
+            {
+                type = "hinge",
+                from = "car_body",
+                axis = {0, 1, 0},
+            }
+        }
+    },
+    keyboard = {
+        c = {
+            down = { physics = { torque = { 0, 20, 0 } } },
+            up = { physics = { torque = { 0, 0, 0 } } },
+        },
+        v = {
+            down = { physics = { torque = { 0, -20, 0 } } },
+            up = { physics = { torque = { 0, 0, 0 } } },
+        }
+    }
+}
+
+
+function makeWheel(position, steers)
+    return {
+        id = "wheel" .. NewEntityIdentifier(),
+        transform = {
+            position = position,
+        },
+        physics = {
+            type = "cylinder",
+            radius = 0.5,
+            length = 0.1,
+            static = false,
+            ignoresGravity = false,
+            joints = {
+                {
+                    type = "hinge",
+                    from = steers and 'steering' or 'car_body',
+                    axis = {0, 0, 1}
+                }
+            },
+            tags = {"wheel"}
+        },
+        keyboard = {
+            x = {
+                down = { physics = { torque = {0, 0, 20} } },
+                up = { physics = { torque = {0,0,0} } }
+            },
+            z = {
+                down = { physics = { torque = {0, 0, -20} } },
+                up = { physics = { torque = {0,0,0} } }
+            },
+        },
+    }
+end
+
 local entities = {
-    Cube,
-    Sphere,
-    Sphere2,
+    -- Cube,
+    -- Sphere,
+    -- Sphere2,
     Floor,
+    car_body,
+    steering, 
+    makeWheel({-1.2, 2.5, 1.1}, true),
+    makeWheel({-1.2, 2.5, -1.1}, true),
+    makeWheel({1.2, 2.9, 1.1}),
+    makeWheel({1.2, 2.9, -1.1}),
 
     withComponents = function(self, components)
         -- todo: iterators!
@@ -175,10 +281,12 @@ function system(components, f)
     end
 end
 
+
 local physics = require'physics'
 Physics = Class.PhysicsSystem()
 function Physics:_init()
-    self.world = physics.new({gravity = -9})
+    self.world = physics.new({gravity = -9, tags = {"wheel", "car"}})
+    self.world.world:disableCollisionBetween("wheel", "car")
     self.colliders = {}
 end
 
@@ -214,18 +322,34 @@ function Physics:update(deltaTime)
                 end --shapes
                 collider:setKinematic(entity.physics.static)
                 collider:setGravityIgnored(entity.physics.ignoresGravity)
+                if entity.transform.position then collider:setPosition(table.unpack(entity.transform.position)) end
+                if entity.transform.rotation then collider:setOrientation(table.unpack(entity.transform.rotation)) end
                 if colliderSpec.friction then collider:setFriction(colliderSpec.friction) end
                 table.insert(colliders, collider)
+                if colliderSpec.tag then collider:setTag(colliderSpec.tag) end
+                if colliderSpec.joints then 
+                    for _, jointSpec in ipairs(colliderSpec.joints) do
+                        local joint
+                        local other = self.colliders[jointSpec.from][1]
+                        assert(other)
+                        if jointSpec.type == "hinge" then
+                            local x, y, z = collider:getPosition()
+                            local ax, ay, az = table.unpack(jointSpec.axis)
+                            joint = physics.newHingeJoint(other, collider, x, y, z, ax, ay, az)
+                        end
+                    end
+                end
             end --colliderSpecs
+
+            
+
             self.colliders[entity.id] = colliders
         end
 
         for _, collider in ipairs(colliders) do
-            local t = entity.transform:toWorld()
-            collider:setPosition(t:position():unpack())
-            collider:setOrientation(t:rotation():unpack())
-            local p = entity.transform:position()
-
+            local t = entity.transform
+            if t.position then collider:setPosition(table.unpack(t.position)) end
+            if t.rotation then collider:setOrientation(table.unpack(t.rotation)) end
             if entity.physics.torque then collider:applyTorque(table.unpack(entity.physics.torque)) end
         end
     end)
@@ -237,7 +361,8 @@ function Physics:update(deltaTime)
         for _, collider in ipairs(colliders) do
             local x, y, z = collider:getPosition()
             local a, ax, ay, az = collider:getOrientation()
-            entity.transform:set(Transform(vec3(x, y, z), quat(a, ax, ay, az)))
+            entity.transform.position = { x, y, z }
+            entity.transform.rotation = { a, ax, ay, az }
         end
     end)
 end
@@ -279,7 +404,7 @@ function lovr.update(deltaTime)
 end
 
 
-function drawAxis(transform)
+local function drawAxis(transform)
     function line(pos, dir)
         local x1, y1, z1 = pos:unpack()
         local x2, y2, z2 = pos:add(dir):unpack()
@@ -295,7 +420,7 @@ function drawAxis(transform)
     line(transform:position(), transform:forward())
 end
 
-function drawBox(t, size, style)
+local function drawBox(t, size, style)
     size = size or 0.2
     style = style or "fill"
     local x, y, z, a, ax, ay, az = t:toWorld():pose()
@@ -390,16 +515,59 @@ function lovr.draw()
     -- Draw everything
     system({"render", "transform"}, function(entity)
         -- pp(entity)
-        local pose = entity.transform and entity.transform:toWorld():mat4()
+        local x, y, z = table.unpack(entity.transform.position or {})
+        local a, ax, ay, az = table.unpack(entity.transform.rotation or {})
+        local pose = mat4(x, y, z, a, ax, ay, az)
         lovr.graphics.push()
         if pose then 
             lovr.graphics.transform(pose)
         end
         entity.render:draw()
         lovr.graphics.pop()
-        drawAxis(entity.transform)
+        drawAxis(Transform(vec3(x, y, z), quat(a, ax, ay, az)))
     end)
-
 end
 
+
+
+local function merge(t, u)
+    if t == nil or u == nil then return end
+    for key, _ in pairs(u) do
+        local left = t[key]
+        local right = u[key]
+        if type(left) == "table" and type(right) == "table" then
+            merge(left, right)
+        else
+            if type(u[key]) == "table" then 
+                t[key] = tablex.deepcopy(u[key])
+            else
+                t[key] = u[key]
+            end
+        end
+    end
+end
+
+
+function lovr.keypressed(key, code, repeated)
+    if repeated then return end
+print(key)
+    system({"keyboard"}, function(entity)
+        local state = entity.keyboard[key]
+        if state then
+            state.pressed = true
+            merge(entity, state.down)
+            pp(state)
+        end
+    end)
+end
+
+function lovr.keyreleased(key, code)
+    system({"keyboard"}, function(entity)
+        local state = entity.keyboard[key]
+        if state then
+            state.pressed = false
+            merge(entity, state.up)
+        end
+    end)
+end
 
