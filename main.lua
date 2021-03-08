@@ -4,7 +4,7 @@ package.path = "lib/share/lua/5.4/?.lua;" ..
     package.path
 Class = require 'pl.class'
 pp = require'pl.pretty'.dump
-
+Transform = require 'transform'
 
 local lovr = lovr
 local newVec3 = lovr.math.newVec3
@@ -20,154 +20,6 @@ local EntityCounter = 0
 function NewEntityIdentifier()
     EntityCounter = EntityCounter + 1
     return EntityCounter
-end
-
-Transform = Class.Transform()
-function Transform:_init(position, rotation, space)
-    if type(position) == "table" and position._name == "Transform" then
-        space = position.space
-        rotation = quat(position._rotation)
-        position = newVec3(position._position)
-    end
-    self._position = newVec3(position)
-    self._rotation = newQuat(rotation)
-    self.space = space -- nil means world space
-end
-
---- Rotates the Transform by `a` radians on the `x`, `y`, `z` axis
-function Transform:rotate(a, x, y, z)
-    self._rotation:mul(quat(a,x,y,z))
-end
-
---- Moves the Transform by `x, y, z`
-function Transform:translate(x, y, z)
-    self._position:add(vec3(x,y,z))
-end
-
---- Returns or sets the position
-function Transform:position(newValue)
-    if newValue then 
-        self._position:set(newValue)
-    end
-    return vec3(self._position)
-end
-
---- Returns or sets the rotation
-function Transform:rotation(newValue)
-    if newValue then 
-        self._rotation:set(newValue)
-    end
-    return quat(self._rotation)
-end
-
---- Returns a direction vector pointing forward
-function Transform:forward()
-    -- -z
-    return self._rotation:mul(vec3(0, 0, -1))
-end
-
---- Returns a direction vector pointing up
-function Transform:up()
-    -- y
-    return self._rotation:mul(vec3(0,1,0))
-end
-
---- Returns a direction vector pointing right
-function Transform:right()
-    -- x
-    return self._rotation:mul(vec3(1,0,0))
-end
-
---- Return the `lovr.math.mat4` for this Transform
-function Transform:mat4()
-    local mat = mat4()
-    mat:translate(self:position())
-    mat:rotate(self:rotation())
-    return mat
-end
-
-
---- Returns the pose on the `x, y, z, a, ax, ay, ax` format
-function Transform:pose()
-    local x,y,z = self:position():unpack()
-    local a, ax, ay, az = self:rotation():unpack()
-    return x, y, z, a, ax, ay, az
-end
-
---- Return self as local to the world space
--- If self.space is nil then a copy of self is returned
-function Transform:toWorld()
-    if self.space then
-        local parent = self.space:toWorld():mat4()
-        return Transform(
-            parent:mul(self:position()),
-            quat(parent):mul(self:rotation())
-        )
-        -- local parent = self.space:toWorld()
-        -- return Transform(
-        --     parent:position():add(parent:rotation():mul(self:position())),
-        --     parent:rotation():mul(self:rotation())
-        -- )
-    else
-        return Transform(self)
-    end
-end
-
---- Return a self as local to `parentSpace`
--- If parentSpace is nil then `toWorld()` is returned
-function Transform:toLocal(parentSpace)
-    -- if parentSpace == nil is same as toWorldSpace
-    if parentSpace == nil then
-        return self:toWorld()
-    end
-    -- get parentspace in world space
-    local parent = parentSpace:toWorld():mat4():invert()
-    -- get ourself into world space
-    local world = self:toWorld()
-    -- get ourselves local to parent
-    return Transform(
-        -- position is the vector between parent and us
-        parent:mul(world:position()),
-        -- rotation is the difference between our and parents world rotation
-        quat(parent):mul(world:rotation()),
-        -- set the space
-        parentSpace
-    )
-end
-
---- Set pose to `transform`
--- Converts between spaces automatically
-function Transform:set(transform)
-    -- if the new transform is in the same space as ours then we are all right
-    if self.space == transform.space then 
-        self._position:set(transform:position())
-        self._rotation:set(transform:rotation())
-    else
-        -- otherwise we convert the new transform to our parent space
-        local t = transform:toLocal(self.space)
-        self._position:set(t:position())
-        self._rotation:set(t:rotation())
-    end
-end
-
---- Rotate self so that its forward direction points towards transform
-function Transform:lookAt(transform)
-    assert(transform)
-    -- use our space
-    local from = self
-    local to = transform:toLocal(self.space)
-    -- use the mat4 lookat method
-    local m = mat4():lookAt(from:position(), to:position(), from:up())
-    local t = Transform(vec3(m), quat(m), self.space)
-    self:set(t)
-
-    -- -- use our space
-    -- local from = self:toWorld()
-    -- local to = transform:toWorld()
-    -- -- use the mat4 lookat method
-    -- local m = mat4():lookAt(from:position(), to:position(), from:up())
-    -- local t = Transform(vec3(m), quat(m))
-    -- self:set(t)
 end
 
 
@@ -191,40 +43,10 @@ function formatTransform(t)
     return string.format("%s, %s", formatVec3(t:position()), formatQuat(t:rotation()))
 end
 
-local f = Transform(vec3(3,4, 5), quat(math.pi/4*0, 0, 0, 1))
-local g = Transform(vec3(10,10, 10), quat(math.pi/4*0, 0, 0, 1))
-local q = Transform(vec3(1, 1, 0), quat(math.pi/4, 0, 0, 1), f)
-local w = Transform(vec3(1, 2, 0), quat(math.pi/4, 0, 0, 1), q)
-print("Q", formatTransform(q))
-print("Q:w", formatTransform(q:toWorld()))
-print("Q:w:l", formatTransform(q:toWorld():toLocal(q.space)))
-
-print("W", formatTransform(w))
-print("W:w", formatTransform(w:toWorld()))
-print("W:w:l", formatTransform(q:toWorld():toLocal(w.space)))
-
-print("Q:w", formatTransform(q:toWorld()))
-print("Q:g:w", formatTransform(q:toLocal(g):toWorld()))
-print("Q:g:f:w", formatTransform(q:toLocal(g):toLocal(f):toWorld()))
-print("Q:f:w", formatTransform(q:toLocal(f):toWorld()))
-print("Q:w", formatTransform(q:toWorld()))
--- local a = Transform(vec3(1, 0, 0))
--- print("pos", formatVec3(a:position()))
--- print("fwd", formatVec3(a:forward()))
--- print(" up", formatVec3(a:up()))
--- print("rgt", formatVec3(a:right()))
--- print()
-
--- local a = Transform(vec3(1,1,1), quat(1, 0, 1, 0))
--- local b = Transform(vec3(2,2,2), quat(1, 0, 1, 0))
--- b.space = a
--- pp(b:toWorld())
--- b:set(Transform(vec3(5,5,5)))
--- print(b.rotation:unpack())
 
 local Cube = {
     id = NewEntityIdentifier(),
-    transform = Transform(vec3(0, 0, -3)),
+    transform = Transform(vec3(0, 0, -3), quat(math.pi/2, 1, 0, 0)),
     render = {
         color = newVec4(1, 0, 0, 1),
         draw = function(self)
@@ -232,27 +54,70 @@ local Cube = {
             lovr.graphics.cube("line")
         end,
     },
-    speed = {
-        movementSpeed = newVec3(0.1, 0, 1),
-        rotationSpeed = newQuat(1, 0, 1, 0),
-    },
+    -- speed = {
+    --     movementSpeed = newVec3(0.1, 0, 1),
+    --     rotationSpeed = newQuat(1, 0, 1, 0),
+    -- },
     physics = {
-
+        torque = { 0, 0, 20},
+        friction = 10000000,
+        shapes = {
+            {
+                type = "box",
+                position = { 0, 0.4, 0 },
+                size = { 0.4, 0.2, 0.2 },
+                rotation = { 0, 1, 0, 0 },
+            },
+            {
+                type = "sphere",
+                radius = 0.3,
+            },
+            {
+                type = "capsule",
+                radius = 0.2,
+                length = 1
+            },
+            {
+                type = "cylinder",
+                radius = 0.2,
+                length = 1.4,
+                rotation = { 3.14/2, 0, 1, 0},
+            }
+        },--shapes
     },
+}
+
+local Floor = {
+    id = NewEntityIdentifier(),
+    transform = Transform(vec3(0, -1, 0)),
+    physics = {
+        friction = 10000000,
+        shapes = {
+            {
+                type = "box",
+                size = {30, 0.1, 30},
+            }
+        },
+        static = true,
+        ignoresGravity = true,
+    }
 }
 
 local Sphere = {
     id = NewEntityIdentifier(),
-    transform = Transform(vec3(0, 0, 1)),
+    transform = Transform(vec3(0.6, 0, 0.9)),
     render = {
-        color = newVec4(0, 1, 0, 1),
+        color = newVec4(0, 2, 0, 1),
         draw = function(self)
             lovr.graphics.setColor(self.color:unpack())
             lovr.graphics.sphere(0,0,0,0.1)
         end,
     },
     parent = Cube.id,
-    physics = {}
+    physics = {
+        type="sphere",
+        radius = 0.2
+    }
 }
 local Sphere2 = {
     id = NewEntityIdentifier(),
@@ -266,7 +131,8 @@ local Sphere2 = {
     },
     -- parent = Cube.id,
     physics = {
-
+        type="sphere",
+        radius = 0.2
     }
 }
 
@@ -274,6 +140,7 @@ local entities = {
     Cube,
     Sphere,
     Sphere2,
+    Floor,
 
     withComponents = function(self, components)
         -- todo: iterators!
@@ -311,61 +178,66 @@ end
 local physics = require'physics'
 Physics = Class.PhysicsSystem()
 function Physics:_init()
-    self.world = physics.new({gravity = -0.2})
+    self.world = physics.new({gravity = -9})
     self.colliders = {}
 end
 
 function Physics:update(deltaTime)
-    system({"physics"}, function(entity)
-        local collider = self.colliders[entity.id]
-        if not collider then 
-            local config = {}
-            local r,g,b,a = entity.render and entity.render.color and entity.render.color:unpack()
-            if r and g and b and a then 
-                config.color = {r,g,b,a}
-            end
-            collider = self.world:box(config)
+    system({"physics", "transform"}, function(entity)
+        local colliders = self.colliders[entity.id]
+        if not colliders then
+            colliders = {}
+            for _, colliderSpec in ipairs(entity.physics.colliders or {entity.physics}) do
+                local collider
+                assert(next(colliderSpec) ~= nil, "No colliders specified")
+                collider = self.world.world:newCollider(table.unpack(colliderSpec.position or {}))
+                for i, shapeSpec in ipairs(colliderSpec.shapes or {colliderSpec}) do
+                    local shape
+                    if shapeSpec.type == "sphere" then
+                        shape = lovr.physics.newSphereShape()
+                    elseif shapeSpec.type == "box" then
+                        shape = lovr.physics.newBoxShape()
+                    elseif shapeSpec.type == "capsule" then
+                        shape = lovr.physics.newCapsuleShape()
+                    elseif shapeSpec.type == "cylinder" then
+                        shape = lovr.physics.newCylinderShape()
+                    else
+                        assert("Invalid shape type")
+                    end
 
-            if entity.parent and entity.transform then
-                local parent = entities:withId(entity.parent)
-                if parent.transform.position and parent.physics and parent.physics.collider then
-                    local p = parent.transform.position
-                    local m = entity.transform.position
-                    -- physics.newDistanceJoint(
-                    --     parent.physics.collider, entity.physics.collider,
-                    --     p.x, p.y, p.z, m.x, m.y, m.z
-                    -- )
-                end
-            end
-
-            self.colliders[entity.id] = collider
+                    collider:addShape(shape)
+                    if shapeSpec.radius then shape:setRadius(shapeSpec.radius) end
+                    if shapeSpec.length then shape:setLength(shapeSpec.length) end
+                    if shapeSpec.size then shape:setDimensions(table.unpack(shapeSpec.size)) end
+                    shape:setPosition(table.unpack(shapeSpec.position or {}))
+                    shape:setOrientation(table.unpack(shapeSpec.rotation or {}))
+                end --shapes
+                collider:setKinematic(entity.physics.static)
+                collider:setGravityIgnored(entity.physics.ignoresGravity)
+                if colliderSpec.friction then collider:setFriction(colliderSpec.friction) end
+                table.insert(colliders, collider)
+            end --colliderSpecs
+            self.colliders[entity.id] = colliders
         end
 
-        if entity.transform then
-            local p = entity.transform.position
+        for _, collider in ipairs(colliders) do
+            local t = entity.transform:toWorld()
+            collider:setPosition(t:position():unpack())
+            collider:setOrientation(t:rotation():unpack())
+            local p = entity.transform:position()
 
-            local parent = entity.parent and entities:withId(entity.parent)
-            if parent and parent.transform.position then
-                p = vec3(parent.transform.position):add(p)
-            end
-            collider:setPosition(p.x, p.y, p.z)
-        end
-        if entity.transform.rotation then
-            collider:setOrientation(entity.transform.rotation:unpack())
+            if entity.physics.torque then collider:applyTorque(table.unpack(entity.physics.torque)) end
         end
     end)
 
     self.world:update(deltaTime)
 
     system({"physics"}, function(entity)
-        local collider = self.colliders[entity.id]
-        if entity.transform.position then
+        local colliders = self.colliders[entity.id]
+        for _, collider in ipairs(colliders) do
             local x, y, z = collider:getPosition()
-            entity.transform.position:set(x, y, z)
-        end
-        if entity.transform.rotation then
-            local a, x, y, z = collider:getOrientation()
-            entity.transform.rotation:set(a, x, y, z)
+            local a, ax, ay, az = collider:getOrientation()
+            entity.transform:set(Transform(vec3(x, y, z), quat(a, ax, ay, az)))
         end
     end)
 end
@@ -380,25 +252,26 @@ local systems = {
 }
 
 function lovr.update(deltaTime)
-
-    system({"speed", "transform"}, function(entity)
-        if entity.speed.movementSpeed then 
-            local speed = vec3(entity.speed.movementSpeed):mul(deltaTime)
-            -- entity.transform.position:add(speed)
-        end
-
-        if entity.speed.rotationSpeed then 
-            local a, x, y, z = quat(entity.speed.rotationSpeed):unpack()
-            -- entity.transform.rotation:mul(quat(a*deltaTime, x, y, z))
-        end
-    end)
-
-    -- systems.physics:update(deltaTime)
-
+    -- Set up transform to parent links
     system({"parent", "transform"}, function (entity)
         local parent = entities:withId(entity.parent)
         entity.transform.space = parent.transform
     end)
+
+    -- Move things that needs to move
+    system({"speed", "transform"}, function(entity)
+        if entity.speed.movementSpeed then 
+            local speed = vec3(entity.speed.movementSpeed):mul(deltaTime)
+            -- entity.transform:position():add(speed)
+        end
+
+        if entity.speed.rotationSpeed then 
+            local a, x, y, z = quat(entity.speed.rotationSpeed):unpack()
+            entity.transform:rotate(a*deltaTime, x, y, z)
+        end
+    end)
+
+    systems.physics:update(deltaTime)
 
     for i, entity in ipairs(entities:withComponents({"transform"})) do
         -- entity.transform.position.x = entity.transform.position.x + 1 * deltaTime
@@ -437,9 +310,8 @@ function lovr.draw()
     lovr.graphics.setCullingEnabled(false)
     lovr.graphics.setBackgroundColor(.58, .58, .60)
 
-    -- systems.physics:draw(true)
-
     local a = Transform(vec3(0,0,0))
+    -- a:scale(vec3(2, 2, 2))
     local b = Transform(vec3(1,0,0))
     local c = Transform(vec3(1,0,0))
     b.space = a
@@ -512,18 +384,21 @@ function lovr.draw()
     local x, y, z, a, ax, ay, az = ball:pose()
     lovr.graphics.box("fill", x, y, z, 0.2, 0.2, 0.2, a, ax, ay, az)
 
-    -- -- Draw everything
-    -- system({"render"}, function(entity)
-    --     -- pp(entity)
-    --     local pose = entity.transform and entity.transform:worldPose()
-    --     lovr.graphics.push()
-    --     if pose then 
-    --         lovr.graphics.transform(pose)
-    --     end
-    --     entity.render:draw()
-    --     drawAxis(entity.transform)
-    --     lovr.graphics.pop()
-    -- end)
+
+    systems.physics:draw(true)
+
+    -- Draw everything
+    system({"render", "transform"}, function(entity)
+        -- pp(entity)
+        local pose = entity.transform and entity.transform:toWorld():mat4()
+        lovr.graphics.push()
+        if pose then 
+            lovr.graphics.transform(pose)
+        end
+        entity.render:draw()
+        lovr.graphics.pop()
+        drawAxis(entity.transform)
+    end)
 
 end
 
