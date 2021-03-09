@@ -186,16 +186,17 @@ local steering = {
                 type = "hinge",
                 from = "car_body",
                 axis = {0, 1, 0},
+                limits = { -0.35, 0.35 }
             }
         }
     },
     keyboard = {
         c = {
-            down = { physics = { torque = { 0, 20, 0 } } },
+            down = { physics = { torque = { 0, 50, 0 } } },
             up = { physics = { torque = { 0, 0, 0 } } },
         },
         v = {
-            down = { physics = { torque = { 0, -20, 0 } } },
+            down = { physics = { torque = { 0, -50, 0 } } },
             up = { physics = { torque = { 0, 0, 0 } } },
         }
     }
@@ -218,7 +219,7 @@ function makeWheel(position, steers)
                 {
                     type = "hinge",
                     from = steers and 'steering' or 'car_body',
-                    axis = {0, 0, 1}
+                    axis = {0, 0, 1},
                 }
             },
             tags = {"wheel"}
@@ -336,6 +337,9 @@ function Physics:update(deltaTime)
                             local x, y, z = collider:getPosition()
                             local ax, ay, az = table.unpack(jointSpec.axis)
                             joint = physics.newHingeJoint(other, collider, x, y, z, ax, ay, az)
+                            if jointSpec.limits then 
+                                joint:setLimits(table.unpack(jointSpec.limits))
+                            end
                         end
                     end
                 end
@@ -350,7 +354,11 @@ function Physics:update(deltaTime)
             local t = entity.transform
             if t.position then collider:setPosition(table.unpack(t.position)) end
             if t.rotation then collider:setOrientation(table.unpack(t.rotation)) end
-            if entity.physics.torque then collider:applyTorque(table.unpack(entity.physics.torque)) end
+            if entity.physics.torque then
+                local rot = quat(collider:getOrientation())
+                local adjusted = rot:mul(vec3(table.unpack(entity.physics.torque)))
+                collider:applyTorque(adjusted)
+            end
         end
     end)
 
