@@ -1,9 +1,0 @@
-[submodule "lodr"]
-	path = lodr
-	url = https://github.com/mcclure/lodr.git
-[submodule "procmesh"]
-	path = procmesh
-	url = https://github.com/jmiskovic/lovr-procmesh.git
-[submodule "imgui"]
-	path = imgui
-	url = https://github.com/patrickriordan/imgui_lua_bindings.git
